@@ -2466,7 +2466,8 @@ def _merge_clipped(dl, src, clip):
         return
     cx1, cy1, cx2, cy2 = clip
     for cmd in src.commands:
-        c = cmd.clipped(clip)
+        clip_fn = getattr(cmd, "clipped", None)      # a command that can't clip is kept whole
+        c = clip_fn(clip) if clip_fn is not None else cmd
         if c is not None:
             dl.add(c)
     for hx1, hy1, hx2, hy2, n in src.hits:

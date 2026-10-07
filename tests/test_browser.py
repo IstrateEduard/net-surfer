@@ -14,7 +14,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.setrecursionlimit(20000)
 
-from browser import css_parser, engine, network, style  # noqa: E402
+from browser import css_parser, engine, network, paint, style  # noqa: E402
 from browser.dom import Element, Text  # noqa: E402
 from browser.html_parser import parse  # noqa: E402
 
@@ -688,6 +688,20 @@ class LayoutTests(unittest.TestCase):
                             '<div id=c style="height:20px">AI Mode</div></button>')
         b, c = box("#b"), box("#c")
         self.assertAlmostEqual(c.y - b.y, 8, delta=1)
+
+    def test_lines_in_clipped_positioned_boxes(self):
+        # ubishops.ca crashed: an underline inside a positioned box under overflow:hidden had no clipped()
+        doc, box = self.lay('<div style="overflow:hidden;width:60px;height:30px">'
+                            '<div style="position:relative;z-index:1"><a href="#" style="text-decoration:underline">'
+                            'a long underlined link that overflows</a><hr></div></div>')
+        dl = doc.paint()
+        lines = [c for c in dl.commands if type(c).__name__ == "DrawLine"]
+        self.assertTrue(lines)
+        for c in lines:
+            self.assertLessEqual(max(c.x1, c.x2), 60.5)
+        cut = paint.DrawLine(0, 5, 100, 5, "#000").clipped((10, 0, 50, 10))
+        self.assertEqual((cut.x1, cut.x2), (10, 50))
+        self.assertIsNone(paint.DrawLine(0, 50, 100, 50, "#000").clipped((10, 0, 50, 10)))
 
     def test_mask_shorthand_with_quoted_data_url(self):
         # Google's checkbox tick: -webkit-mask: url('data:...<svg xmlns="...">') center/cover no-repeat

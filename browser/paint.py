@@ -63,6 +63,10 @@ class Command:
     def shifted_into(self, clip):
         return self
 
+    def clipped(self, clip):
+        """Default for commands without exact clipping: keep it if it overlaps."""
+        return self if self.intersects(*clip) else None
+
 
 class DrawRect(Command):
     def __init__(self, x1, y1, x2, y2, color, outline=None, stipple=None):
@@ -156,6 +160,27 @@ class DrawLine(Command):
         kw = {"dash": self.dash} if self.dash else {}
         canvas.create_line(self.x1 - dx, self.y1 - dy, self.x2 - dx, self.y2 - dy,
                            fill=self.color, width=self.thickness, **kw)
+
+    def clipped(self, clip):
+        """Cut the line to the clip rectangle (Liang-Barsky)."""
+        cx1, cy1, cx2, cy2 = clip
+        x1, y1, dx, dy = self.x1, self.y1, self.x2 - self.x1, self.y2 - self.y1
+        t0, t1 = 0.0, 1.0
+        for p, q in ((-dx, x1 - cx1), (dx, cx2 - x1), (-dy, y1 - cy1), (dy, cy2 - y1)):
+            if p == 0:
+                if q < 0:
+                    return None
+            else:
+                t = q / p
+                if p < 0:
+                    t0 = max(t0, t)
+                else:
+                    t1 = min(t1, t)
+                if t0 > t1:
+                    return None
+        if t0 == 0.0 and t1 == 1.0:
+            return self
+        return DrawLine(x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy, self.color, self.thickness, self.dash)
 
 
 class DrawRoundRect(Command):
