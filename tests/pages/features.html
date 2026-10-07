@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Feature test page</title>
+<link rel="stylesheet" href="features.css">
+<style>
+  .inline-style-sheet { color: green; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<header class="top"><strong>CS 208 Browser &mdash; feature test page</strong> &middot; <a href="#css">CSS</a> &middot; <a href="#layout">Layout</a> &middot; <a href="#forms">Forms</a></header>
+<main>
+<h1>Rendering checklist</h1>
+<p>Every line below that should work reads <span class="pass">green</span>; anything <span class="fail">red</span> is a bug.</p>
+
+<h2 id="html">HTML parsing</h2>
+<p>Entities: &lt;tag&gt; &amp; &copy; &eacute; &#8364; &#x2603; &nbsp;(nbsp) &mdash; <b>bold</b>, <i>italic</i>, <u>underline</u>, <s>strike</s>, <code>code</code>, x<sup>2</sup>, H<sub>2</sub>O.
+<p>Unclosed paragraph above is closed by this one (implied end tag).
+<ul><li>List item one<li>List item two (implied &lt;/li&gt;)<li>Three <ul><li>nested circle</li><li>nested</li></ul></ul>
+<ol start="3"><li>starts at three</li><li>four</li></ol>
+<pre>preformatted   text
+    keeps   spaces and
+newlines</pre>
+<blockquote>A blockquote is indented on both sides by the user-agent stylesheet.</blockquote>
+
+<h2 id="css">CSS selectors and cascade</h2>
+<p class="spec" id="spec1">ID selector beats class selector.</p>
+<p class="spec2">Later rule with equal specificity wins.</p>
+<div><p class="child">Child combinator works.</p></div>
+<p class="descendant">Descendant combinator: <span><em>this em is nested</em></span>.</p>
+<p class="inline-style-sheet">&lt;style&gt; element rules apply.</p>
+<p style="color: green">Inline style attribute applies.</p>
+<p class="fail" style="color: green !important">Inline <code>!important</code> wins.</p>
+<p class="hidden-by-css fail">If you can read this, display:none is broken.</p>
+<p class="var">CSS custom property via var(--accent).</p>
+<p class="mq">Media query: green when the window is wider than 600px, red when narrower.</p>
+<p><font color="green">Legacy &lt;font color&gt; attribute works.</font></p>
+
+<h2 id="box">Box model</h2>
+<div class="box">width 200 + padding 10 + border 4 = 228px wide</div>
+<div class="box bb">box-sizing: border-box, 200px total</div>
+<div class="centered">margin: auto centers a 300px block</div>
+<div class="calc">width: calc(50% - 20px)</div>
+<p>Inline blocks: <span class="ib">one</span><span class="ib">two</span><span class="ib">three</span> sit on a line.</p>
+<p>Inline element with <span style="background: #ffeaa0; padding: 2px 6px; border: 1px solid #d9b640">background, padding and border</span> wraps with text.</p>
+
+<h2 id="layout">Layout</h2>
+<div class="float-left">float: left</div>
+<div class="float-right">float: right</div>
+<p>This paragraph's lines are shortened to flow around the two floated boxes. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+<div class="clear"></div>
+<div class="flex"><div>flex item</div><div class="grow">flex: 1 grows</div><div>last</div></div>
+<br>
+<div class="flex center"><div>left</div><div>middle, centered vertically</div><div>right</div></div>
+<br>
+<div class="grid"><div>grid 1</div><div>grid 2</div><div>grid 3</div><div class="wide">spans two columns</div><div>grid 5</div></div>
+<br>
+<div class="rel">position: relative container<div class="abs">absolute, bottom-right</div><span class="vh">visually hidden text should not show</span></div>
+<p style="position: relative; left: 20px; top: 4px">position: relative shifts this paragraph 20px right.</p>
+<p style="text-align: center">text-align: center</p>
+<p style="text-align: right">text-align: right</p>
+
+<h2 id="tables">Tables</h2>
+<table class="data">
+<thead><tr><th>Stage</th><th>Owned by this browser</th><th>Library used</th></tr></thead>
+<tr><td>Networking</td><td>URLs, redirects, cookies, cache</td><td>http.client, ssl</td></tr>
+<tr><td>HTML</td><td>tokenizer + tree builder</td><td>none</td></tr>
+<tr><td>CSS</td><td>parser, selectors, cascade</td><td>none</td></tr>
+<tr><td colspan="2">Layout and paint (colspan=2)</td><td>Tk canvas primitives</td></tr>
+</table>
+<table border="1" cellpadding="4" style="margin-top: 8px"><tr><td>legacy</td><td>border=1 cellpadding=4</td></tr></table>
+
+<h2 id="images">Images</h2>
+<p><img src="sunny.png" alt="a sunny picture"> PNG, <img src="tri.png" alt="triangle"> transparent PNG,
+<img src="photo.jpg" width="60" alt="jpeg"> JPEG scaled by width attribute, <img src="missing.png" alt="broken image alt text">.</p>
+<div class="tiled">background-image tiles</div>
+
+<h2 id="forms">Forms and links</h2>
+<form action="https://httpbin.org/get" method="get">
+<p><label>Search: <input name="q" placeholder="type here"></label> <input type="submit" value="Go"></p>
+<p><label><input type="checkbox" name="c" checked> checkbox</label> <label><input type="radio" name="r" value="a" checked> a</label> <label><input type="radio" name="r" value="b"> b</label>
+<select name="s"><option>first</option><option selected>second</option></select></p>
+<p><textarea name="t">text area</textarea></p>
+</form>
+<p><a href="#html">Jump to top section</a> &middot; <a href="features.html?x=1">relative link with query</a> &middot; <a href="/nowhere/404">absolute path link</a></p>
+</main>
+</body>
+</html>

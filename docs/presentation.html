@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Net Surfer</title>
+<style>
+@page { size: A4; margin: 9mm 10mm; }
+* { box-sizing: border-box; }
+body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; color: #1d2433; margin: 0; font-size: 9.4pt; line-height: 1.3; }
+h1 { font-size: 21pt; margin: 0; letter-spacing: -0.3px; }
+.sub { color: #555; margin: 2px 0 10px; font-size: 10.5pt; }
+h2 { font-size: 11.5pt; margin: 0 0 4px; color: #203a70; text-transform: uppercase; letter-spacing: .5px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.card { border: 1px solid #d8dde8; border-radius: 6px; padding: 8px 10px; }
+ul { margin: 0; padding-left: 16px; } li { margin: 1px 0; }
+.pipe { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; margin: 4px 0 2px; }
+.stage { background: #203a70; color: white; border-radius: 4px; padding: 4px 6px; font-size: 8.6pt; text-align: center; line-height: 1.2; }
+.stage small { display: block; color: #bcd3ff; font-size: 7.4pt; }
+.arrow { color: #203a70; font-weight: bold; }
+.lib { font-size: 8.8pt; color: #444; margin-top: 4px; }
+.shot { width: 100%; height: 190px; object-fit: cover; object-position: top left; border: 1px solid #ccd; border-radius: 4px; display: block; }
+.big { font-size: 9.4pt; }
+.stats { display: flex; gap: 8px; margin-top: 6px; }
+.stat { flex: 1; background: #f1f4fa; border-radius: 4px; padding: 4px; text-align: center; font-size: 8.5pt; }
+.stat b { display: block; font-size: 13pt; color: #203a70; }
+.warn { border-color: #e6b3b3; background: #fff7f7; }
+.amb { border-color: #b9d7b9; background: #f6fbf6; }
+</style></head>
+<body>
+<h1>Net Surfer</h1>
+<div class="sub"><b>Eduard</b> &middot; Assignment 3 &middot; a desktop web browser with its own HTML &rarr; DOM &rarr; CSS &rarr; layout &rarr; paint pipeline, in Python</div>
+
+<div class="card" style="margin-bottom:10px">
+<h2>Architecture: how a URL becomes pixels</h2>
+<div class="pipe">
+ <div class="stage">URL<small>network.py</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">HTTP(S) fetch<small>redirects, cookies, gzip</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">HTML parser<small>tokens &rarr; DOM tree</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">CSS parser<small>selectors, @media</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">Cascade<small>specificity, inherit</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">Layout<small>box tree, lines</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">Paint<small>display list</small></div><span class="arrow">&rarr;</span>
+ <div class="stage">Tk canvas<small>draw + hit test</small></div>
+</div>
+<div class="lib">Fetching, parsing, styling and image decoding run on a worker thread; layout and painting run on the UI thread.
+<b>Libraries only for:</b> sockets/TLS/HTTP framing (<code>http.client</code>, <code>ssl</code>), window + text drawing (<code>tkinter</code>), raster image decoding (Pillow). Everything else is our code.</div>
+</div>
+
+<div class="grid">
+<div class="card">
+<h2>What it can do</h2>
+<ul>
+<li>HTTP/HTTPS, redirects, relative URLs, cookies, cache, gzip, charsets, GET/POST forms</li>
+<li>Forgiving HTML parser (implied tags, entities, bad nesting)</li>
+<li>CSS: external/inline sheets, @import, @media, cascade + specificity, <code>var()</code>, <code>calc()</code>, <code>::before/::after</code></li>
+<li>Layout: box model, margin collapsing, inline text wrapping, inline-block, floats, lists, tables, flexbox, grid, absolute/relative positioning</li>
+<li>Paint: text, backgrounds, borders, PNG/JPEG/GIF images, SVG</li>
+<li>Tabs, back/forward, reload, scrolling, links, bookmarks, view-source, DOM/style inspector, network log</li>
+</ul>
+<div class="stats"><div class="stat"><b>~7,000</b>lines of our code</div><div class="stat"><b>51</b>automated tests</div><div class="stat"><b>0</b>crashes in fuzzing</div></div>
+</div>
+<div>
+<img class="shot" src="screenshot.png">
+<div style="font-size:8.5pt;color:#666;margin-top:2px">pypi.org rendered by the browser (layout, flexbox, floats, clearfix, SVG logo)</div>
+</div>
+
+<div class="card amb">
+<h2>Most ambitious feature</h2>
+<p class="big" style="margin:0">A real <b>layout engine</b> rather than a text dumper: one box tree handles block flow with margin collapsing, inline line boxes with baselines, floats that text wraps around, table column sizing from min/max content widths, flexbox grow/shrink, grid tracks and absolute positioning, all driven by computed styles. Plus our own <b>SVG rasterizer</b> (paths, arcs, transforms) so logos and icons show up.</p>
+</div>
+<div class="card warn">
+<h2>Most important limitation</h2>
+<p class="big" style="margin:0"><b>No JavaScript.</b> Pages that build their content in JS (single-page apps) show only their static HTML. Also no web fonts (icons drawn with icon fonts are missing) and no <code>z-index</code> ordering. Documents nested thousands of levels deep show an error page because the layout is recursive.</p>
+</div>
+<div class="card">
+<h2>How it was tested</h2>
+<ul>
+<li>Unit tests for the parser, selectors, cascade, URLs and layout geometry</li>
+<li>A local HTTP server for redirects, gzip, cookies, charsets, 404s, POST</li>
+<li>End-to-end tests that click links, go back/forward, type into and submit forms in the real window</li>
+<li>Random malformed HTML/CSS fuzzing through the whole pipeline</li>
+<li>Screenshots of real sites (PyPI, RubyGems, Packagist, pkg.go.dev, Node.js) compared with how they should look</li>
+</ul>
+</div>
+<div>
+<img class="shot" src="screenshot-packagist.png">
+<div style="font-size:8.5pt;color:#666;margin-top:2px">packagist.org: flex header, centred hero, search form</div>
+</div>
+</div>
+</body></html>

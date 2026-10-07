@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>JavaScript test page</title>
+<style>
+body { font-family: sans-serif; margin: 0; background: #f4f6fb; color: #222; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 24px 20px; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+.sub { color: #666; margin: 0 0 20px; }
+.card { background: white; border: 1px solid #dde2ee; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; }
+.card h2 { font-size: 16px; margin: 0 0 8px; }
+button { padding: 4px 12px; }
+.pass { color: #137333; font-weight: bold; }
+.fail { color: #b00020; font-weight: bold; }
+.hidden { display: none; }
+.highlight { background: #fff3b0; }
+#checks li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1 id="heading">JavaScript test page</h1>
+<p class="sub" id="status">Scripts are not running.</p>
+
+<div class="card">
+  <h2>Click handler</h2>
+  <button id="counter">Clicked 0 times</button>
+  <button id="toggle">Show / hide the box</button>
+  <p id="box" class="highlight">This box is toggled by a class change.</p>
+</div>
+
+<div class="card">
+  <h2>Timer</h2>
+  <p>Seconds on this page: <span id="clock">0</span></p>
+</div>
+
+<div class="card">
+  <h2>Built by script</h2>
+  <ul id="list"></ul>
+</div>
+
+<div class="card">
+  <h2>Form handled by script</h2>
+  <form id="form" action="/nowhere">
+    <input id="name" name="name" placeholder="Type your name">
+    <input type="submit" id="go" value="Greet">
+  </form>
+  <p id="greeting">No greeting yet.</p>
+  <p>Live: <span id="echo"></span></p>
+</div>
+
+<div class="card">
+  <h2>Sandbox checks</h2>
+  <ul id="checks"></ul>
+</div>
+</div>
+
+<script>
+document.getElementById('status').textContent = 'Scripts are running.';
+document.getElementById('status').className = 'sub pass';
+
+var clicks = 0;
+document.getElementById('counter').addEventListener('click', function () {
+  clicks++;
+  this.textContent = 'Clicked ' + clicks + (clicks === 1 ? ' time' : ' times');
+});
+document.getElementById('toggle').onclick = function () {
+  document.getElementById('box').classList.toggle('hidden');
+};
+
+var list = document.getElementById('list');
+['HTML parser', 'CSS cascade', 'Layout', 'Painting', 'JavaScript'].forEach(function (name, i) {
+  var li = document.createElement('li');
+  li.textContent = (i + 1) + '. ' + name;
+  if (name === 'JavaScript') li.style.fontWeight = 'bold';
+  list.appendChild(li);
+});
+
+var start = Date.now();
+setInterval(function () {
+  document.getElementById('clock').textContent = Math.floor((Date.now() - start) / 1000);
+}, 1000);
+
+document.getElementById('form').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var name = document.getElementById('name').value || 'stranger';
+  document.getElementById('greeting').textContent = 'Hello, ' + name + '!';
+});
+document.getElementById('name').addEventListener('input', function () {
+  document.getElementById('echo').textContent = this.value;
+});
+
+// Things a page must NOT be able to do. Each line should say "blocked".
+var checks = document.getElementById('checks');
+function check(label, blocked) {
+  var li = document.createElement('li');
+  li.innerHTML = label + ': <span class="' + (blocked ? 'pass' : 'fail') + '">' + (blocked ? 'blocked' : 'NOT BLOCKED') + '</span>';
+  checks.appendChild(li);
+}
+check('No Node/Python/OS objects (require, process, os, std)',
+      typeof require === 'undefined' && typeof process === 'undefined' && typeof os === 'undefined' && typeof std === 'undefined');
+check('No raw access to the browser bridge', typeof __native === 'undefined');
+check('Cookies are not readable', document.cookie === '');
+check('No popups', window.open('https://example.com/') === null);
+var navBlocked = false;
+try { location.href = 'file:///C:/Windows/win.ini'; } catch (e) { navBlocked = true; }
+check('Cannot navigate to file:// pages', navBlocked);
+fetch('https://example.com/').then(function () { check('Cross-origin fetch', false); },
+                                   function () { check('Cross-origin fetch', true); });
+fetch('file:///C:/Windows/win.ini').then(function () { check('Reading local files with fetch', false); },
+                                         function () { check('Reading local files with fetch', true); });
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+/* External stylesheet for the feature test page */
+body { font-family: sans-serif; margin: 0; color: #222; background: #fafafa; }
+header.top { background: #203a70; color: white; padding: 12px 24px; }
+header.top a { color: #bcd3ff; }
+main { max-width: 860px; margin: 0 auto; padding: 8px 24px 60px; background: white; }
+h2 { border-bottom: 2px solid #203a70; padding-bottom: 4px; margin-top: 32px; font-size: 20px; }
+.pass { color: green; font-weight: bold; }
+.fail { color: red; font-weight: bold; }
+/* specificity: id beats class beats tag, later beats earlier */
+p.spec { color: red; }
+#spec1 { color: green; }
+.spec2 { color: red; }
+.spec2 { color: green; }
+div > .child { color: green; }
+.descendant em { color: green; }
+.box { width: 200px; padding: 10px; border: 4px solid #555; margin: 10px 0; background: #e8f0ff; }
+.box.bb { box-sizing: border-box; }
+.centered { width: 300px; margin: 10px auto; background: #ffe7c2; text-align: center; padding: 6px; }
+.ib { display: inline-block; width: 90px; height: 40px; background: #cde; margin: 4px; vertical-align: middle; text-align: center; }
+.float-left { float: left; width: 120px; height: 80px; background: #f7c6c6; margin: 0 12px 6px 0; }
+.float-right { float: right; width: 120px; height: 60px; background: #c6f7d2; margin: 0 0 6px 12px; }
+.clear { clear: both; }
+.flex { display: flex; gap: 10px; background: #f2f2f2; padding: 8px; }
+.flex > div { background: #d9e6ff; padding: 8px; }
+.flex .grow { flex: 1; background: #b8d0ff; }
+.flex.center { justify-content: space-between; align-items: center; height: 80px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.grid > div { background: #ffe0f0; padding: 10px; }
+.grid .wide { grid-column: span 2; background: #f0c0e0; }
+.rel { position: relative; height: 90px; background: #eee; border: 1px dashed #999; }
+.abs { position: absolute; right: 10px; bottom: 10px; background: #333; color: white; padding: 4px 8px; }
+.hidden-by-css { display: none; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+table.data { border-collapse: collapse; width: 100%; }
+table.data th, table.data td { border: 1px solid #aaa; padding: 4px 8px; text-align: left; }
+table.data tr:nth-child(even) td { background: #f3f6fb; }
+.tiled { height: 60px; background: url(tile.png); border: 1px solid #99a; }
+:root { --accent: #b3246b; }
+.var { color: var(--accent); border-left: 6px solid var(--accent); padding-left: 8px; }
+.calc { width: calc(50% - 20px); background: #eaffea; padding: 4px; }
+@media (max-width: 600px) { .mq { background: #ffd0d0; } .mq::after { content: "narrow"; } }
+@media (min-width: 601px) { .mq { background: #d0ffd0; } }
