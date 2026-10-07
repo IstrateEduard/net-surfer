@@ -1155,8 +1155,13 @@ class StyleEngine:
             while i < len(decls) and decls[i][0] == 0 and not decls[i][1]:
                 raw[decls[i][4]] = decls[i][5]
                 i += 1
-            raw.update(_presentational_hints(node))
+            for k, v in _presentational_hints(node).items():
+                raw.pop(k, None)
+                raw[k] = v
             for d in decls[i:]:
+                # re-insert so properties apply in cascade order: a var() shorthand
+                # (expanded below) must not override a longhand from a later rule
+                raw.pop(d[4], None)
                 raw[d[4]] = d[5]
             custom = [(p, v) for p, v in raw.items() if p.startswith("--")]
             if custom:

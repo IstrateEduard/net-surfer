@@ -163,7 +163,7 @@ xvfb-run python3 -m unittest discover -s tests      # headless Linux
 python3 tests/screenshot.py https://pypi.org/ out.png   # render a page and save a screenshot
 ```
 
-* 101 automated tests (`tests/test_browser.py`, `tests/test_js.py`): HTML parsing edge cases, selector matching and
+* 104 automated tests (`tests/test_browser.py`, `tests/test_js.py`): HTML parsing edge cases, selector matching and
   specificity, cascade/inheritance/`var()`, URL resolution, networking against
   a local HTTP server (redirect chains, gzip, cookies, charsets, 404s,
   connection failures, POST), layout geometry (box model, auto margins, margin

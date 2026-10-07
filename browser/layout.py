@@ -14,6 +14,8 @@ FloatContext shared by one block formatting context, and line boxes are
 shortened around them. Absolutely positioned boxes are laid out by their
 nearest positioned ancestor once its size is known.
 """
+import heapq
+import itertools
 import math
 import re
 
@@ -1025,6 +1027,22 @@ def layout_absolute(box, cbx, cby, cbw, cbh, sx, sy):
     forced = None
     if box.content_width_from_spec(cbw) is None and left is not None and right is not None:
         forced = max(0, cbw - left - right)
+    # height: a percentage of the containing block, or stretched between top and bottom
+    hspec = s.get("height", "auto")
+    forced_h = None
+    if hspec.endswith("%") and cbh is not None:
+        forced_h = box.specified("height", cbh)
+        if forced_h is not None and s.get("box-sizing") == "border-box":
+            forced_h -= box.vert_extra()
+    elif hspec == "auto" and top is not None and bottom is not None and cbh is not None \
+            and not isinstance(box, (ControlBox, ImageBox)):
+        forced_h = cbh - top - bottom - box.m[T] - box.m[B] - box.vert_extra()
+    if forced_h is not None:
+        box._forced_h = max(0.0, forced_h)
+        box._abs_forced_h = True
+    elif getattr(box, "_abs_forced_h", False):
+        box._forced_h = None
+        box._abs_forced_h = False
     box.layout(0, 0, cbw, FloatContext(), forced_outer=forced, shrink=forced is None, positioned=box)
     if left is not None:
         x = cbx + left
@@ -2408,9 +2426,16 @@ def _defer_positioned(box, dl):
     return True
 
 
-def _paint_set_aside(dl, items):
+def _paint_set_aside(dl, items, pool=None):
+    """Paint set-aside boxes in (z-index, tree order). Positioned boxes found
+    while painting a z-index:auto one land in `pool` and belong to this same
+    stacking context, so they join the queue rather than going after it all."""
     out = paint.DisplayList()
-    for _, _, box, clip in sorted(items, key=lambda d: (d[0], d[1])):
+    seq = itertools.count()
+    heap = [(z, order, next(seq), box, clip) for z, order, box, clip in items]
+    heapq.heapify(heap)
+    while heap:
+        _, _, _, box, clip = heapq.heappop(heap)
         tmp = paint.DisplayList()
         tmp.deferred, tmp.negatives, tmp.layers, tmp.clip = dl.deferred, dl.negatives, dl.layers, clip
         box.painting_deferred = True
@@ -2419,6 +2444,10 @@ def _paint_set_aside(dl, items):
         finally:
             box.painting_deferred = False
         _merge_clipped(out, tmp, clip)
+        if pool:
+            for z, order, b, c in pool:
+                heapq.heappush(heap, (z, order, next(seq), b, c))
+            pool.clear()
     return out
 
 
@@ -2436,7 +2465,7 @@ def _drain_stacking(dl):
             continue
         items = list(dl.deferred)
         dl.deferred.clear()
-        out = _paint_set_aside(dl, items)
+        out = _paint_set_aside(dl, items, dl.deferred)
         dl.commands.extend(out.commands)
         dl.hits.extend(out.hits)
 
@@ -3686,7 +3715,9 @@ class ControlBox(Box):
         self.paint_background(dl)
         x1, y1, x2, y2 = self.border_box()
         font = get_font(self.style)
-        color = color_of(self.style.get("color")) or "#000000"
+        color = color_of(self.style.get("color"))
+        hidden_text = color is None and self.style.get("color") not in (None, "")   # color: transparent
+        color = color or "#000000"
         native = not _appearance_none(self.style)   # appearance: none -> only the CSS styling
         accent = self.style.get("accent-color", "auto")
         accent = color_of(accent) if accent not in ("auto", None) else None
@@ -3718,7 +3749,9 @@ class ControlBox(Box):
                     cmd = paint.DrawText(self.x, self.y, ph, pfont, pcol).clipped(clip)
                     if cmd:
                         dl.add(cmd)
-            if self.kind == "textarea":
+            if hidden_text:
+                pass
+            elif self.kind == "textarea":
                 for i, ln in enumerate(label.split("\n")):
                     cmd = paint.DrawText(self.x, self.y + i * font.linespace, ln, font, color).clipped(clip)
                     if cmd:

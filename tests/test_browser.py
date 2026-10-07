@@ -153,6 +153,14 @@ class CascadeTests(unittest.TestCase):
         style.StyleEngine(rules).style_tree(doc)
         return doc
 
+    def test_var_shorthand_loses_to_more_specific_longhand(self):
+        # ubishops.ca: "input[type=submit] { background: var(--b) }" must not beat a more specific
+        # ".search-form .search-submit[type=submit] { background: transparent }"
+        doc = self.styled('<form class="search-form"><input type="submit" class="search-submit"></form>',
+                          ':root { --b: #380d58 } .search-form .search-submit[type="submit"] { background: transparent }'
+                          ' input[type="submit"] { background: var(--b) }')
+        self.assertEqual(find(doc, "input").style["background-color"], "transparent")
+
     def test_specificity_and_order(self):
         doc = self.styled('<p id="x" class="y">t</p>', "#x { color: green } .y { color: red } p { color: blue }")
         self.assertEqual(find(doc, "p").style["color"], "green")
@@ -702,6 +710,23 @@ class LayoutTests(unittest.TestCase):
         cut = paint.DrawLine(0, 5, 100, 5, "#000").clipped((10, 0, 50, 10))
         self.assertEqual((cut.x1, cut.x2), (10, 50))
         self.assertIsNone(paint.DrawLine(0, 50, 100, 50, "#000").clipped((10, 0, 50, 10)))
+
+    def test_z_index_inside_z_auto_positioned_box(self):
+        # ubishops.ca: header z-index:21 must cover a z-index:4 section nested in a position:relative (z auto) div
+        doc, box = self.lay('<body style="margin:0"><header style="position:relative;z-index:21;height:100px;'
+                            'background:red"></header><main style="margin-top:-40px"><div style="position:relative">'
+                            '<section style="position:relative;z-index:4;height:100px;background:blue"></section>'
+                            '</div></main>')
+        colors = [c.color for c in doc.paint().commands if getattr(c, "color", None) in ("#ff0000", "#0000ff")]
+        self.assertEqual(colors, ["#0000ff", "#ff0000"])    # blue first, red painted on top
+
+    def test_absolute_percent_height_and_top_bottom_stretch(self):
+        # ubishops.ca search icon: position:absolute; top:0; height:100% inside a 40px form
+        doc, box = self.lay('<form style="position:relative;width:300px"><div style="height:40px"></div>'
+                            '<div id=p style="position:absolute;top:0;right:0;width:50px;height:100%"></div>'
+                            '<div id=s style="position:absolute;top:5px;bottom:5px;left:0;width:10px"></div></form>')
+        self.assertEqual(box("#p").height, 40)
+        self.assertEqual(box("#s").height, 30)
 
     def test_mask_shorthand_with_quoted_data_url(self):
         # Google's checkbox tick: -webkit-mask: url('data:...<svg xmlns="...">') center/cover no-repeat
