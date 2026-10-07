@@ -1096,6 +1096,7 @@ class Browser:
         """Highlight selected text with the element's ::selection colours."""
         c = self.canvas
         c.delete("selection")
+        self._selection_draws = []
         for cmd, k1, k2 in self._selection:
             x1 = cmd.left + cmd.font.measure(cmd.text[:k1])
             x2 = cmd.left + cmd.font.measure(cmd.text[:k2])
@@ -1107,12 +1108,15 @@ class Browser:
             bg = layout.color_of(st.get("background-color")) if st else None
             fg = layout.color_of(st.get("color")) if st and "color" in st.get("-declared", ()) else None
             c.create_rectangle(x1, cmd.top, x2, cmd.bottom, fill=bg or "#b3d4fc", width=0, tags=("selection",))
-            c.create_text(x1, cmd.top, text=cmd.text[k1:k2], font=cmd.font.tk, anchor="nw",
-                          fill=fg or cmd.color, tags=("selection",))
+            selected = paint.DrawText(x1, cmd.top, cmd.text[k1:k2], cmd.font, fg or cmd.color)
+            item = selected.execute(c, 0, 0)
+            c.addtag_withtag("selection", item)
+            self._selection_draws.append(selected)
 
     def _clear_selection(self):
         self._selection = []
         self.canvas.delete("selection")
+        self._selection_draws = []
 
     def _copy_selection(self):
         if self.root.focus_get() is self.address or not self._selection:

@@ -760,23 +760,117 @@ def compute_font_size(value, parent_px):
 # ---------------------------------------------------------------------------
 # Cascade
 
-_VAR_RE = re.compile(r"var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)")
+_VAR_REF_RE = re.compile(r"var\(\s*(--[\w-]+)")
+
+
+def _replace_vars(value, lookup):
+    """Substitute balanced var() functions; None is guaranteed-invalid.
+
+    A missing reference invalidates the whole declaration, not just the
+    reference token. Fallbacks may themselves contain nested functions.
+    """
+    out, i = [], 0
+    while i < len(value):
+        if value[i] in ("'", '"'):
+            quote, j = value[i], i + 1
+            while j < len(value):
+                if value[j] == "\\":
+                    j += 2
+                    continue
+                if value[j] == quote:
+                    j += 1
+                    break
+                j += 1
+            out.append(value[i:j])
+            i = j
+            continue
+        if not value.startswith("var(", i):
+            out.append(value[i])
+            i += 1
+            continue
+        j, level, comma, quote = i + 4, 1, None, None
+        while j < len(value):
+            ch = value[j]
+            if ch == "\\":
+                j += 2
+                continue
+            if quote:
+                if ch == quote:
+                    quote = None
+            elif ch in ("'", '"'):
+                quote = ch
+            elif ch == "(":
+                level += 1
+            elif ch == ")":
+                level -= 1
+                if level == 0:
+                    break
+            elif ch == "," and level == 1 and comma is None:
+                comma = j
+            j += 1
+        if level:
+            return None
+        name = value[i + 4:comma if comma is not None else j].strip()
+        if not re.fullmatch(r"--[\w-]+", name):
+            return None
+        replacement = lookup(name)
+        if replacement is None:
+            if comma is None:
+                return None
+            replacement = _replace_vars(value[comma + 1:j].strip(), lookup)
+            if replacement is None:
+                return None
+        out.append(replacement)
+        i = j + 1
+    return "".join(out)
 
 
 def _substitute(value, variables, depth=0):
-    if "var(" not in value or depth > 10:
-        return value
+    return _replace_vars(value, variables.get) if "var(" in value else value
 
-    def repl(m):
-        name, fallback = m.group(1), m.group(2)
-        v = variables.get(name)
-        if v is None:
-            v = fallback if fallback is not None else ""
-        return _substitute(v, variables, depth + 1)
-    out = _VAR_RE.sub(repl, value)
-    if "var(" in out and out != value:
-        out = _substitute(out, variables, depth + 1)
-    return out
+
+def _resolve_variables(custom, inherited):
+    """Cascade all custom properties before resolving their dependencies.
+
+    Inherited values are already computed on the parent. Resolving a child
+    must not rebind an inherited alias to the child's new variable value.
+    """
+    raw = dict(custom)
+    resolved = dict(inherited)
+    active, cyclic = [], set()
+
+    def resolve(name):
+        if name not in raw:
+            return resolved.get(name)
+        if name in active:
+            cyclic.update(active[active.index(name):])
+            return None
+        value = raw[name]
+        active.append(name)
+        try:
+            # References in fallback branches participate in cycle detection.
+            for dependency in _VAR_REF_RE.findall(value):
+                resolve(dependency)
+            keyword = value.strip().lower()
+            if keyword in ("inherit", "unset", "revert", "revert-layer"):
+                result = inherited.get(name)
+            elif keyword == "initial":
+                result = None
+            else:
+                result = _replace_vars(value, resolve)
+            if name in cyclic:
+                result = None
+        except RecursionError:
+            result = None
+        finally:
+            active.pop()
+        raw.pop(name, None)
+        resolved[name] = result
+        return result
+
+    for name in list(raw):
+        resolve(name)
+    return resolved
 
 
 # Properties that never change box positions or sizes: a hover/focus change
@@ -1131,7 +1225,7 @@ class StyleEngine:
 
     def _style_node(self, node, parent_style):
         parent_style = parent_style or {}
-        style = {}
+        style = {"-font-faces": parent_style.get("-font-faces", getattr(self, "font_faces", None))}
         # Inherit.
         for prop in INHERITED:
             if prop in parent_style:
@@ -1165,9 +1259,7 @@ class StyleEngine:
                 raw[d[4]] = d[5]
             custom = [(p, v) for p, v in raw.items() if p.startswith("--")]
             if custom:
-                variables = dict(variables)
-                for prop, value in custom:
-                    variables[prop] = _substitute(value, variables)
+                variables = _resolve_variables(custom, variables)
             for prop, value in raw.items():
                 if prop.startswith("--"):
                     continue
@@ -1176,7 +1268,10 @@ class StyleEngine:
                 if "attr(" in value and prop != "content":
                     value = _attr_values(value, node)
                 if "var(" in value:
-                    value = _substitute(value, variables).strip()
+                    value = _substitute(value, variables)
+                    if value is None:
+                        value = "unset"
+                    value = value.strip()
                     if not value:
                         continue
                     for p2, v2 in css_parser.expand_shorthand(prop, value):
@@ -1494,8 +1589,7 @@ def _quote_pairs(value):
 
 def generated_text(content, el, counters=None, quotes=None):
     """Evaluate a `content` value: strings, attr(), quotes, counter(),
-    counters(). Icon-font glyphs (Unicode private use area) are dropped since
-    we can't draw web fonts."""
+    counters(). Private-use glyphs are retained for downloadable icon fonts."""
     out = []
     counters = counters or {}
     for m in re.finditer(r'"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'|attr\(\s*([\w-]+)\s*\)|(open-quote|close-quote)'
@@ -1534,7 +1628,7 @@ def generated_text(content, el, counters=None, quotes=None):
             raw = re.sub(r"\\(.)", r"\1", raw)
             out.append(raw)
     text = "".join(out)
-    return "".join(ch for ch in text if not (0xE000 <= ord(ch) <= 0xF8FF or ord(ch) >= 0xF0000))
+    return text
 
 
 def _presentational_hints(el):

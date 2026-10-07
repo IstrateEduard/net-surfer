@@ -162,6 +162,13 @@ def _variant_family(family, weight, stretch):
 
 
 def get_font(style, scale=1.0):
+    web = style.get("-font-faces")
+    if web is not None:
+        font = web.get(style.get("font-family", "serif"), style.get("-font-px", 16.0) * scale,
+                       numeric_weight(style.get("font-weight", "normal")),
+                       style.get("font-style", "normal") != "normal")
+        if font is not None:
+            return font
     family = resolve_family(style.get("font-family", "serif"))
     size = style.get("-font-px", 16.0) * scale
     weight = numeric_weight(style.get("font-weight", "normal"))
@@ -199,6 +206,9 @@ _SCALED = {}
 
 def scaled_font(font, factor):
     """The same face at `factor` times the size (scale() transforms)."""
+    from .webfonts import WebFont
+    if isinstance(font, WebFont):
+        return WebFont(font.face, font.size_px * factor, font.weight)
     act = font.tk.actual()
     key = (act.get("family"), int(round(font.size_px * factor)), act.get("weight") == "bold",
            act.get("slant") == "italic")

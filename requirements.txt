@@ -1,2 +1,3 @@
 Pillow>=9
 quickjs>=1.19
+fonttools[woff]>=4.0

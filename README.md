@@ -24,8 +24,7 @@ simply skips scripts).
 
 ```bash
 python3 -m pip install -r requirements.txt     # installs Pillow and quickjs
-python3 run_browser.py                         # opens the start page
-python3 run_browser.py https://pypi.org/       # or open a URL directly
+py -3.12 run_browser.py
 ```
 
 On Debian/Ubuntu, Tkinter is a separate package: `sudo apt install python3-tk`.

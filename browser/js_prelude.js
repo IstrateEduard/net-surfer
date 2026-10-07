@@ -613,8 +613,8 @@ class Element extends Node {
   closest(sel) { return wrap(native('closest', hOf(this), str(sel))); }
   getBoundingClientRect() { const r = rectOf(this); return r ? new DOMRect(r[0], r[1], r[2], r[3]) : new DOMRect(0, 0, 0, 0); }
   getClientRects() { const r = rectOf(this); return nodeList(r ? [new DOMRect(r[0], r[1], r[2], r[3])] : []); }
-  get clientWidth() { const r = rectOf(this); return r ? Math.round(r[2]) : 0; }
-  get clientHeight() { const r = rectOf(this); return r ? Math.round(r[3]) : 0; }
+  get clientWidth() { if (this === document.documentElement) return viewport().width; const r = rectOf(this); return r ? Math.round(r[2]) : 0; }
+  get clientHeight() { if (this === document.documentElement) return viewport().height; const r = rectOf(this); return r ? Math.round(r[3]) : 0; }
   get clientTop() { return 0; }
   get clientLeft() { return 0; }
   get scrollWidth() { return this.clientWidth; }
@@ -1050,10 +1050,10 @@ mixin(Document, ParentNode);
 
 // document.implementation.createHTMLDocument(): a detached <html> tree that
 // libraries such as jQuery use to parse HTML without touching the page.
-function detachedDocument(title) {
-  const html = document.createElement('html');
-  const head = html.appendChild(document.createElement('head'));
-  const body = html.appendChild(document.createElement('body'));
+function detachedDocument(title, parsedRoot) {
+  const html = parsedRoot || document.createElement('html');
+  const head = html.querySelector('head') || html.appendChild(document.createElement('head'));
+  const body = html.querySelector('body') || html.appendChild(document.createElement('body'));
   if (title !== undefined) head.appendChild(document.createElement('title')).textContent = str(title);
   return {
     nodeType: 9, documentElement: html, head, body, defaultView: null, readyState: 'complete',
@@ -1073,6 +1073,12 @@ function detachedDocument(title) {
     adoptNode: (n) => n,
     addEventListener() {}, removeEventListener() {},
   };
+}
+class DOMParser {
+  parseFromString(source, type) {
+    if (str(type) !== 'text/html') throw new TypeError('Only text/html parsing is supported');
+    return detachedDocument(undefined, wrap(native('parse_document', str(source))));
+  }
 }
 defineOnProps(Document.prototype, EVENT_NAMES.concat(['readystatechange', 'visibilitychange', 'DOMContentLoaded']));
 class HTMLDocument extends Document {}
@@ -1514,12 +1520,22 @@ function makeObserver(name, onObserve) {
     takeRecords() { return []; }
   };
 }
+const INTERSECTIONS = new WeakMap();
+class IntersectionObserverEntry {
+  constructor(init) { INTERSECTIONS.set(this, init); }
+}
+for (const key of ['target', 'isIntersecting', 'intersectionRatio', 'boundingClientRect',
+                    'intersectionRect', 'rootBounds', 'time']) {
+  Object.defineProperty(IntersectionObserverEntry.prototype, key, {
+    get() { return INTERSECTIONS.get(this)[key]; }, enumerable: true,
+  });
+}
 // Elements are treated as always on screen, so lazy-loading code shows its content.
 const IntersectionObserver = makeObserver('IntersectionObserver', (obs, target) => {
   setTimeout(() => {
     if (!obs._targets.includes(target)) return;
     const r = target.getBoundingClientRect();
-    obs._cb([{ target, isIntersecting: true, intersectionRatio: 1, boundingClientRect: r, intersectionRect: r, rootBounds: null, time: performance.now() }], obs);
+    obs._cb([new IntersectionObserverEntry({ target, isIntersecting: true, intersectionRatio: 1, boundingClientRect: r, intersectionRect: r, rootBounds: null, time: performance.now() })], obs);
   }, 0);
 });
 const MutationObserver = makeObserver('MutationObserver');
@@ -1609,7 +1625,7 @@ const globals = {
   getComputedStyle: (el) => computedStyle(el),
   getSelection: () => ({ rangeCount: 0, toString: () => '', removeAllRanges() {}, addRange() {}, getRangeAt() { return document.createRange(); } }),
   matchMedia, atob, btoa, TextEncoder, TextDecoder,
-  IntersectionObserver, MutationObserver, ResizeObserver, PerformanceObserver,
+  DOMParser, IntersectionObserverEntry, IntersectionObserver, MutationObserver, ResizeObserver, PerformanceObserver,
   EventTarget, Event, CustomEvent, UIEvent, MouseEvent, PointerEvent, KeyboardEvent, FocusEvent, InputEvent,
   SubmitEvent, ProgressEvent, ErrorEvent, DOMException, DOMRect, DOMTokenList,
   Node, CharacterData, Text, Comment, Element, HTMLElement, Document, HTMLDocument, DocumentFragment: DF,

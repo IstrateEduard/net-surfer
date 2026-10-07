@@ -109,6 +109,7 @@ def anon_style(parent_style):
         if k in parent_style:
             s[k] = parent_style[k]
     s["-vars"] = parent_style.get("-vars", {})
+    s["-font-faces"] = parent_style.get("-font-faces")
     s["-font-px"] = parent_style.get("-font-px", 16.0)
     s["font-size"] = parent_style.get("font-size", "16px")
     s["display"] = "block"
@@ -318,6 +319,8 @@ class Box:
         return max(0.0, w)
 
     def resolve_height(self, content_h, cb_h=None):
+        if cb_h is None:
+            cb_h = getattr(self, "_containing_height", None)
         if getattr(self, "_forced_h", None) is not None:   # stretched/flexed by a flex or grid parent
             return self._forced_h
         h =self.specified("height", cb_h) if (cb_h is not None or "%" not in self.style.get("height", "")) else None
@@ -332,10 +335,10 @@ class Box:
                 h -= self.vert_extra()
         else:
             h = content_h
-        mx = self.specified("max-height", cb_h) if "%" not in self.style.get("max-height", "") else None
+        mx = self.specified("max-height", cb_h)
         if mx is not None:
             h = min(h, mx - (self.vert_extra() if bb else 0))
-        mn = self.specified("min-height", cb_h) if "%" not in self.style.get("min-height", "") else None
+        mn = self.specified("min-height", cb_h)
         if mn is not None:
             h = max(h, mn - (self.vert_extra() if bb else 0))
         return max(0.0, h)
@@ -712,7 +715,7 @@ def paint_background_layers(box, dl, value, x1, y1, x2, y2, radius=0):
 def _bg_position(pos, free_x, free_y, fs):
     """background-position with 1-4 values (keywords, lengths, percentages,
     and edge offsets like 'right 10px bottom 5px')."""
-    toks = pos.lower().split()
+    toks = css_split(pos.lower())
     if not toks:
         return 0, 0
     if len(toks) == 1:
@@ -997,7 +1000,7 @@ def _bg_offset(token, free, fs, horizontal):
             return free * float(token[:-1]) / 100
         except ValueError:
             return 0
-    return length(token, fs, None, auto=0) or 0
+    return length(token, fs, free, auto=0) or 0
 
 
 def queue_abs(target, box, sx, sy, anchor):
@@ -1227,6 +1230,13 @@ class BlockBox(Box):
         own_fc = fc
         if self.establishes_bfc() or fc is None:
             own_fc = FloatContext()
+        self._containing_width = cb_w
+        self._child_height_basis = _definite_height(self)
+        height_children = list(self.children)
+        height_children.extend(obj for kind, obj in (self.inline_items or [])
+                               if kind in ("block", "atom", "float"))
+        for child in height_children:
+            child._containing_height = self._child_height_basis
         content_h = self.layout_contents(own_fc, positioned)
         if own_fc is not fc and not own_fc.empty():
             content_h = max(content_h, own_fc.bottom() - self.y)
@@ -3487,31 +3497,52 @@ class ImageBox(Box):
             return (font.measure(self.alt) + 4, font.linespace + 4)
         return (0, 0)
 
-    def compute_size(self, cb_w):
+    def compute_size(self, cb_w, forced_outer=None):
         nw, nh = self.natural_size()
         w = self.content_width_from_spec(cb_w)
-        h = self.specified("height", None)
-        if h is not None and self.style.get("box-sizing") == "border-box":
-            h -= self.vert_extra()
-        ratio = _aspect_ratio(self.style)
-        if ratio and w is not None and h is None:
-            h = w / ratio
-        elif ratio and h is not None and w is None:
-            w = h * ratio
-        if w is None and h is None:
+        forced_h = getattr(self, "_forced_h", None)
+        cb_h = getattr(self, "_containing_height", None)
+        h = forced_h if forced_h is not None else self.specified("height", cb_h)
+        if h is not None and forced_h is None and self.style.get("box-sizing") == "border-box":
+            h = max(0.0, h - self.vert_extra())
+        if forced_outer is not None:
+            w = max(0.0, forced_outer - self.horiz_extra() - self.m[L] - self.m[R])
+        auto_w, auto_h = w is None, h is None
+        ratio = _aspect_ratio(self.style) or (nw / nh if nw and nh else None)
+        if auto_w and auto_h:
             w, h = nw, nh
-        elif w is None:
-            w = nw * h / nh if nh else 0
-        elif h is None:
-            h = nh * w / nw if nw else (0 if self.image is not None else 0)
-        mx = self.specified("max-width", cb_w)
-        if mx is not None and w > mx and w > 0:
-            h = h * mx / w
-            w = mx
-        mxh = self.specified("max-height", None)
-        if mxh is not None and h > mxh and h > 0:
-            w = w * mxh / h
-            h = mxh
+            if ratio and w:
+                h = w / ratio
+        elif auto_w:
+            w = h * ratio if ratio else nw
+        elif auto_h:
+            h = w / ratio if ratio else nh
+
+        bb = self.style.get("box-sizing") == "border-box"
+        def limit(prop, base, extra, default):
+            value = self.specified(prop, base)
+            return default if value is None else max(0.0, value - (extra if bb else 0))
+        min_w = limit("min-width", cb_w, self.horiz_extra(), 0.0)
+        max_w = max(min_w, limit("max-width", cb_w, self.horiz_extra(), INF))
+        min_h = limit("min-height", cb_h, self.vert_extra(), 0.0)
+        max_h = max(min_h, limit("max-height", cb_h, self.vert_extra(), INF))
+        if auto_w and auto_h and w > 0 and h > 0:
+            # Both auto dimensions share the intrinsic ratio, except when the
+            # minimum on one axis conflicts with the maximum on the other.
+            low = max(min_w / w, min_h / h)
+            high = min(max_w / w, max_h / h)
+            if low <= high:
+                scale = min(max(1.0, low), high)
+                w, h = w * scale, h * scale
+            else:
+                w, h = min(max(w, min_w), max_w), min(max(h, min_h), max_h)
+        else:
+            w = min(max(w, min_w), max_w)
+            if auto_h and ratio:
+                h = w / ratio
+            h = min(max(h, min_h), max_h)
+            if auto_w and ratio:
+                w = min(max(h * ratio, min_w), max_w)
         return max(0.0, w), max(0.0, h)
 
     def intrinsic(self):
@@ -3526,12 +3557,7 @@ class ImageBox(Box):
 
     def layout(self, cb_x, y, cb_w, fc, forced_outer=None, shrink=False, positioned=None):
         self.compute_edges(cb_w)
-        w, h = self.compute_size(cb_w)
-        if forced_outer is not None:
-            neww = forced_outer - self.horiz_extra() - self.m[L] - self.m[R]
-            if w:
-                h = h * neww / w
-            w = neww
+        w, h = self.compute_size(cb_w, forced_outer)
         if self.style.get("display") in BLOCK_LEVEL and not shrink and forced_outer is None:
             free = cb_w - w - self.horiz_extra()
             if self.m_auto[L] and self.m_auto[R]:
@@ -3549,17 +3575,23 @@ class ImageBox(Box):
             self.paint_background(dl)
             if self.image is not None and self.width >= 1 and self.height >= 1:
                 fit = self.style.get("object-fit", "fill")
-                if fit in ("cover", "contain") and self.image.size[0] and self.image.size[1]:
-                    iw, ih = self.image.size
-                    scale = (max if fit == "cover" else min)(self.width / iw, self.height / ih)
+                iw, ih = self.image.size
+                dw, dh = self.width, self.height
+                if iw and ih and fit in ("cover", "contain", "none", "scale-down"):
+                    if fit == "none":
+                        scale = 1.0
+                    elif fit == "scale-down":
+                        scale = min(1.0, self.width / iw, self.height / ih)
+                    else:
+                        scale = (max if fit == "cover" else min)(self.width / iw, self.height / ih)
                     dw, dh = iw * scale, ih * scale
-                    cmd = paint.DrawImage(self.x + (self.width - dw) / 2, self.y + (self.height - dh) / 2,
-                                          dw, dh, self.image, self.url)
-                    cmd = cmd.clipped((self.x, self.y, self.x + self.width, self.y + self.height))
-                    if cmd:
-                        dl.add(cmd)
-                else:
-                    dl.add(paint.DrawImage(self.x, self.y, self.width, self.height, self.image, self.url))
+                ox, oy = _bg_position(self.style.get("object-position", "50% 50%"),
+                                      self.width - dw, self.height - dh, self.fs)
+                cmd = paint.DrawImage(self.x + ox, self.y + oy, dw, dh, self.image, self.url)
+                cmd = cmd.clipped((self.x, self.y, self.x + self.width, self.y + self.height))
+                if cmd:
+                    dl.add(cmd)
+
             elif self.alt and self.width > 0:
                 font = get_font(self.style)
                 dl.add(paint.DrawRect(self.x, self.y, self.x + self.width, self.y + self.height, None, outline="#bbbbbb"))
@@ -3597,8 +3629,8 @@ class SvgBox(ImageBox):
         """<svg> with neither width/height attributes nor a CSS width or height."""
         return self.image is not None and not self.image.has_explicit_size and             self.style.get("width", "auto") == "auto" and self.style.get("height", "auto") == "auto"
 
-    def compute_size(self, cb_w):
-        if self._sizeless() and cb_w:
+    def compute_size(self, cb_w, forced_outer=None):
+        if self._sizeless() and cb_w and forced_outer is None and getattr(self, "_forced_h", None) is None:
             # CSS default sizing: as wide as the containing block, height from the viewBox
             nw, nh = self.natural_size()
             w = cb_w
@@ -3606,7 +3638,7 @@ class SvgBox(ImageBox):
             if mx is not None:
                 w = min(w, mx)
             return w, (w * nh / nw if nw else 150.0)
-        return super().compute_size(cb_w)
+        return super().compute_size(cb_w, forced_outer)
 
     def intrinsic(self):
         if self._sizeless():
@@ -4688,9 +4720,7 @@ def _definite_height(box):
     if fh is not None:
         return fh
     v = box.style.get("height", "auto")
-    if "%" in v:
-        return None
-    h = length(v, box.fs, None, None)
+    h = length(v, box.fs, getattr(box, "_containing_height", None), None)
     if h is None:
         return None
     if box.style.get("box-sizing") == "border-box":
@@ -4702,8 +4732,9 @@ def _definite_height(box):
 def _min_max_height(box):
     s = box.style
     bb = s.get("box-sizing") == "border-box"
-    mn = length(s.get("min-height", "auto"), box.fs, None, None) if "%" not in s.get("min-height", "") else None
-    mx = length(s.get("max-height", "none"), box.fs, None, None) if "%" not in s.get("max-height", "") else None
+    base = getattr(box, "_containing_height", None)
+    mn = length(s.get("min-height", "auto"), box.fs, base, None)
+    mx = length(s.get("max-height", "none"), box.fs, base, None)
     mn = 0.0 if mn is None else max(0.0, mn - (box.vert_extra() if bb else 0))
     mx = INF if mx is None else max(0.0, mx - (box.vert_extra() if bb else 0))
     return mn, max(mn, mx)
@@ -4723,12 +4754,12 @@ def _stretch_height(c, h, positioned):
     """Stretch an already laid-out item to content height h."""
     mn, mx = _min_max_height(c)
     h = max(0.0, min(max(h, mn), mx))
-    if abs(h - c.height) < 0.5:
+    if abs(h - c.height) < 0.5 and getattr(c, "_child_height_basis", None) == h:
         return
-    if isinstance(c, FlexBox):
+    if isinstance(c, BlockBox):
         x, y = c.margin_left_edge(), c.margin_top_edge()
         outer = c.outer_width()
-        _relayout_with_height(c, h, outer, False, positioned, forced_outer=outer)
+        _relayout_with_height(c, h, getattr(c, "_containing_width", outer), False, positioned, forced_outer=outer)
         c.translate(x - c.margin_left_edge(), y - c.margin_top_edge())
     else:
         c.height = h
@@ -5371,6 +5402,7 @@ class DocumentLayout:
         self.abs_boxes = []
         self.width = width
         fc = FloatContext()
+        self.root._containing_height = height
         self.root.layout(0, 0, width, fc, positioned=None)
         # Absolute/fixed boxes with no positioned ancestor use the viewport.
         items, self.abs_items = self.abs_items, []

@@ -89,10 +89,12 @@ class Page:
         order = 0
         layers = {}
         self.keyframes, counter_styles, registered = {}, {}, {}
+        self.font_faces = []
         for text, _src in self.css_sources:
             parsed, parser = css_parser.parse_stylesheet_full(text, viewport_width, order, layers)
             order += len(parsed) + 1
             rules.extend(parsed)
+            self.font_faces.extend(parser.font_faces)
             self.keyframes.update(parser.keyframes)
             counter_styles.update(parser.counter_styles)
             registered.update(parser.properties)
@@ -101,7 +103,8 @@ class Page:
         self.has_containers = any(getattr(r, "container", None) for r in rules) or \
             any("cq" in t and "container-type" in t for t, _ in self.css_sources)
         engine = style.StyleEngine(rules, registered)
-        engine.style_tree(self.document)
+        engine.font_faces = getattr(self, "web_fonts", None)
+        engine.style_tree(self.document, {"-font-faces": getattr(self, "web_fonts", None)})
         self.style_engine = engine      # kept for :hover/:focus restyles
         self.rule_count = len(rules)
         self.styled_width = viewport_width
@@ -217,6 +220,12 @@ def _finish(page, markup, viewport_width, fetch_subresources=True, progress=None
     page.timings["css"] = time.time() - t1
     progress(P_STYLESHEETS, "Computing styles")
     page.restyle(viewport_width)
+    if fetch_subresources and page.font_faces:
+        from . import webfonts
+        page.web_fonts = webfonts.load(page, page.font_faces, POOL)
+        page.style_engine.font_faces = page.web_fonts
+        for node in [page.document] + list(page.document.descendants()):
+            node.style["-font-faces"] = page.web_fonts
     progress(P_STYLED, "Styled")
     t2 = time.time()
     if fetch_subresources:

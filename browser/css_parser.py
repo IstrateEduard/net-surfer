@@ -655,6 +655,7 @@ class StyleSheetParser:
         self.order = order_start
         self.imports = []
         self.layers = layers if layers is not None else {}   # layer name -> order of first appearance
+        self.font_faces = []
         self.keyframes = {}        # @keyframes name -> [(offset 0..1, [(prop, value)])]
         self.counter_styles = {}   # @counter-style name -> descriptors
         self.properties = {}       # @property --name -> (inherits, initial value)
@@ -819,6 +820,8 @@ class StyleSheetParser:
                         frames.append((off, decls))
             frames.sort(key=lambda f: f[0])
             self.keyframes[prelude.strip().strip("\"'")] = frames
+        elif name == "font-face":
+            self.font_faces.append({p: v for p, v, _ in parse_declarations(body)})
         elif name == "counter-style":
             desc = {}
             for dp, dv, _ in parse_declarations(body):
@@ -830,7 +833,7 @@ class StyleSheetParser:
                 desc[dp] = dv
             inherits = desc.get("inherits", "true").strip().lower() == "true"
             self.properties[prelude.strip()] = (inherits, desc.get("initial-value"))
-        # @font-face, @page (no printing here), @font-feature-values ... are skipped.
+        # @page (no printing here), @font-feature-values ... are skipped.
         return end + 1
 
     def _full_layer(self, name):

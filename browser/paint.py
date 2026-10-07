@@ -115,12 +115,26 @@ class DrawText(Command):
     anchor = None
 
     def execute(self, canvas, dx, dy):
+        if hasattr(self.font, "rasterize"):
+            from PIL import ImageTk
+            key = (self.text, self.color, self.angle)
+            if getattr(self, "_raster_key", None) != key:
+                raster, ox, oy = self.font.rasterize(self.text, self.color)
+                if self.angle:
+                    raster = raster.rotate(self.angle, expand=True)
+                    ox = oy = 0
+                self._raster_photo = ImageTk.PhotoImage(raster, master=canvas)
+                self._raster_offset = (ox, oy)
+                self._raster_key = key
+            ox, oy = self._raster_offset
+            return canvas.create_image(self.left + ox - dx, self.top + oy - dy,
+                                       image=self._raster_photo, anchor="nw")
         if self.angle:
             ax, ay = self.anchor
-            canvas.create_text(ax - dx, ay - dy, text=self.text, font=self.font.tk,
+            return canvas.create_text(ax - dx, ay - dy, text=self.text, font=self.font.tk,
                                anchor="nw", fill=self.color, angle=self.angle)
             return
-        canvas.create_text(self.left - dx, self.top - dy, text=self.text, font=self.font.tk,
+        return canvas.create_text(self.left - dx, self.top - dy, text=self.text, font=self.font.tk,
                            anchor="nw", fill=self.color)
 
     def clipped(self, clip):

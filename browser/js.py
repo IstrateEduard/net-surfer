@@ -1082,6 +1082,17 @@ class ScriptHost:
         self._count(count)
         return nodes
 
+    def op_parse_document(self, markup):
+        # A detached tree: neither resource loading nor script execution is
+        # triggered by DOMParser. Normal insertion rules apply if adopted later.
+        root = parse(str(markup))
+        nodes = list(_all_nodes(root))
+        self._count(len(nodes))
+        for node in nodes:
+            if isinstance(node, Element) and node.tag == "script":
+                self.started_scripts.add(node)
+        return self._ref(root)
+
     def op_html_set(self, h, markup):
         el = self._el(h)
         if el.tag in RAW_TEXT_ELEMENTS:
